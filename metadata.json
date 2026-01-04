@@ -1,0 +1,5 @@
+{
+  "name": "DirectorAI",
+  "description": "A comprehensive AI-powered video production suite for creators. Generate detailed character profiles, full scripts, and storyboard visualizations using Google Gemini.",
+  "requestFramePermissions": []
+}
