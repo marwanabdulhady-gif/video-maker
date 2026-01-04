@@ -46,4 +46,10 @@ export interface Script {
   characters: string[]; // Names or IDs of characters used
 }
 
+export interface ProjectData {
+  characters: Character[];
+  scripts: Script[];
+  timestamp: number;
+}
+
 export type GenerationStatus = 'idle' | 'loading' | 'success' | 'error';
