@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
-import { Character, Script, Language } from './types';
+import { Character, Script, Language, ProjectData } from './types';
 import Dashboard from './components/Dashboard';
 import Characters from './components/Characters';
 import Scripts from './components/Scripts';
@@ -74,6 +74,10 @@ const translations = {
     stylePixel: "بيكسل آرت",
     addScene: "إضافة مشهد جديد",
     addingScene: "جاري إضافة المشهد...",
+    exportProject: "تصدير المشروع (JSON)",
+    importProject: "استيراد مشروع",
+    projectLoaded: "تم تحميل المشروع بنجاح!",
+    importError: "خطأ في قراءة ملف المشروع. تأكد من صحة الملف.",
   },
   en: {
     dashboard: "Dashboard",
@@ -140,6 +144,10 @@ const translations = {
     stylePixel: "Pixel Art",
     addScene: "Add New Scene",
     addingScene: "Adding Scene...",
+    exportProject: "Export Project (JSON)",
+    importProject: "Import Project",
+    projectLoaded: "Project loaded successfully!",
+    importError: "Error reading project file. Please check the file.",
   }
 };
 
@@ -150,6 +158,7 @@ interface AppContextType {
   scripts: Script[];
   addScript: (script: Script) => void;
   updateScript: (id: string, updates: Partial<Script>) => void;
+  loadProject: (data: ProjectData) => void;
   language: Language;
   setLanguage: (lang: Language) => void;
   t: (key: keyof typeof translations['en']) => string;
@@ -178,6 +187,11 @@ const App = () => {
     setScripts(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
   };
 
+  const loadProject = (data: ProjectData) => {
+    if (data.characters) setCharacters(data.characters);
+    if (data.scripts) setScripts(data.scripts);
+  };
+
   const t = (key: keyof typeof translations['en']) => {
     return translations[language][key] || key;
   };
@@ -197,7 +211,7 @@ const App = () => {
   }, [language]);
 
   return (
-    <AppContext.Provider value={{ characters, addCharacter, updateCharacter, scripts, addScript, updateScript, language, setLanguage, t }}>
+    <AppContext.Provider value={{ characters, addCharacter, updateCharacter, scripts, addScript, updateScript, loadProject, language, setLanguage, t }}>
       <HashRouter>
         <Layout>
           <Routes>

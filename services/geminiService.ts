@@ -3,6 +3,9 @@ import { Character, Script, Language, Platform, VideoFormat, Tone, ScriptScene }
 
 // Helper to get client
 const getClient = () => {
+  if (!process.env.API_KEY) {
+    throw new Error("API_KEY is missing");
+  }
   return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
@@ -66,49 +69,56 @@ export const generateScript = async (
   language: Language
 ): Promise<Script> => {
   const ai = getClient();
-  const characterContext = characters.map(c => `${c.name} (${c.role}): ${c.personality}`).join('\n');
+  
+  let characterContext = "No specific characters provided. Create original characters suitable for the plot.";
+  if (characters.length > 0) {
+    characterContext = characters.map(c => `- ${c.name} (${c.role}, ${c.gender}): ${c.personality}`).join('\n');
+  }
 
   const langInstruction = language === 'ar' 
     ? "Write the script dialogue and descriptions in ARABIC." 
     : "Write the script in ENGLISH.";
 
   const formatInstruction = format === 'reel' || format === 'short'
-    ? "This is a Short/Reel format. Keep it fast-paced, highly engaging within first 3 seconds, vertical video optimized. Total duration under 60 seconds. Focus on visual hooks."
-    : "This is a Long form video. Focus on depth, storytelling structure, and pacing suitable for longer viewing (Youtube/LinkedIn).";
+    ? "Format: Vertical Short/Reel (Under 60s). Fast-paced, visual hooks."
+    : "Format: Long Video (YouTube). Narrative structure.";
 
   const platformContexts = {
-    youtube: "Optimize for viewer retention, clear intro, and call to action (subscribe).",
-    tiktok: "Fast-paced, use trending styles if applicable, very casual and high energy.",
-    instagram: "Aesthetic, engaging, suitable for Reels audience.",
-    twitter: "Concise, punchy, thought-provoking.",
-    linkedin: "Professional, value-driven, insightful, industry-focused."
+    youtube: "Optimize for YouTube (Retention, Intro, Outro).",
+    tiktok: "Optimize for TikTok (Trends, Fast cuts).",
+    instagram: "Optimize for Instagram Reels (Aesthetic, Engaging).",
+    twitter: "Optimize for X/Twitter (Concise, Punchy).",
+    linkedin: "Optimize for LinkedIn (Professional, Value-driven)."
   };
 
   const toneContexts = {
-    funny: "Use humor, jokes, and comedic timing. Keep it lighthearted.",
-    serious: "Maintain a serious, formal, or grave tone. No jokes.",
-    educational: "Informative, clear, explanatory, and teaching-oriented.",
-    dramatic: "High stakes, emotional, intense, focus on conflict.",
-    inspirational: "Uplifting, motivating, powerful and moving.",
-    casual: "Conversational, vlog-style, relatable and authentic."
+    funny: "Tone: Funny, Humorous, Comedic.",
+    serious: "Tone: Serious, Formal, Grave.",
+    educational: "Tone: Educational, Informative.",
+    dramatic: "Tone: Dramatic, Emotional, Intense.",
+    inspirational: "Tone: Inspirational, Motivational.",
+    casual: "Tone: Casual, Conversational, Vlog-style."
   };
+
+  const systemInstruction = `You are an expert screenwriter. 
+  ${langInstruction}
+  ${formatInstruction}
+  ${platformContexts[platform]}
+  ${toneContexts[tone]}
+  
+  Generate a video script JSON with a title, logline, and a list of scenes.
+  For each scene, provide a 'visualPrompt' in ENGLISH.`;
 
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: `Write a script for a video titled "${title}".
+    contents: `Title: "${title}"
     Premise: ${premise}
     
-    CONFIGURATION:
-    Language: ${langInstruction}
-    Format: ${formatInstruction}
-    Platform: ${platformContexts[platform]}
-    Tone: ${toneContexts[tone]}
-    
-    Characters available:
+    Characters:
     ${characterContext}
-    
-    Generate scenes. For each scene, include a 'visualPrompt' (IN ENGLISH) that describes the visual composition.`,
+    `,
     config: {
+      systemInstruction: systemInstruction,
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
@@ -137,21 +147,33 @@ export const generateScript = async (
                     }
                   }
                 }
-              }
+              },
+              required: ["sceneNumber", "location", "time", "description", "visualPrompt", "dialogue"]
             }
           }
-        }
+        },
+        required: ["title", "genre", "logline", "scenes"]
       }
     }
   });
 
   const text = response.text;
-  if (!text) throw new Error("No response text");
+  if (!text) throw new Error("No response text from AI");
 
-  const data = JSON.parse(text);
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    console.error("Failed to parse JSON", text);
+    throw new Error("AI returned invalid JSON");
+  }
   
   // Add IDs to scenes
-  data.scenes = data.scenes.map((s: any) => ({ ...s, id: crypto.randomUUID() }));
+  if (data.scenes && Array.isArray(data.scenes)) {
+    data.scenes = data.scenes.map((s: any) => ({ ...s, id: crypto.randomUUID() }));
+  } else {
+    data.scenes = [];
+  }
 
   return {
     id: crypto.randomUUID(),
@@ -170,29 +192,24 @@ export const generateNextScene = async (
 ): Promise<ScriptScene> => {
   const ai = getClient();
   const lastScene = script.scenes[script.scenes.length - 1];
-  const nextSceneNum = script.scenes.length + 1;
+  const nextSceneNum = (lastScene?.sceneNumber || 0) + 1;
 
   const langInstruction = language === 'ar' 
-    ? "Write the script dialogue and descriptions in ARABIC." 
-    : "Write the script in ENGLISH.";
+    ? "Write in ARABIC." 
+    : "Write in ENGLISH.";
 
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: `Continue the following script by generating the next scene (Scene ${nextSceneNum}).
-    
-    Context:
+    contents: `Continue this script with Scene ${nextSceneNum}.
     Title: ${script.title}
     Genre: ${script.genre}
     Tone: ${script.tone}
     Logline: ${script.logline}
     
-    Previous Scene Summary:
-    ${lastScene.location} - ${lastScene.description}
+    Previous Scene: ${lastScene?.description || 'Start of story'}
     
-    Instructions:
-    ${langInstruction}
-    Maintain the continuity of the story.
-    Include a visual prompt in English.`,
+    Instruction: ${langInstruction}
+    Maintain strict continuity. Provide valid JSON.`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -227,7 +244,7 @@ export const generateNextScene = async (
   return {
     ...data,
     id: crypto.randomUUID(),
-    sceneNumber: nextSceneNum // Ensure correct number
+    sceneNumber: nextSceneNum
   };
 };
 
